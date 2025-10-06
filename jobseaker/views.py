@@ -211,9 +211,9 @@ def jobs_by_skills(request):
             # Check skill overlap
             if any(skill in job_skills_lower for skill in user_skills_lower):
                 company_profile_image = None
-                if hasattr(job.company, "profile_image") and job.company.profile_image:
+                if hasattr(job.company, "logo") and job.company.logo:
                     company_profile_image = request.build_absolute_uri(
-                        job.company.profile_image.url
+                        job.company.logo.url
                     )
 
                 matching_jobs.append({
@@ -476,18 +476,40 @@ def get_job_post_by_id(request, pk):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 
+
+from rest_framework.exceptions import ValidationError   # ✅ DRF version
+
+@permission_classes([IsAuthenticated])
 class JobApplicationStatusUpdateView(generics.UpdateAPIView):
     queryset = JobApplication.objects.all()
     serializer_class = JobApplicationStatusUpdateSerializer
-    
+
     def patch(self, request, *args, **kwargs):
         application = self.get_object()
+        current_status = application.status
+
         serializer = self.get_serializer(application, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
+
+        new_status = serializer.validated_data.get("status")
+
+        # Allowed transitions
+        if current_status == "applied" and new_status == "withdrawn":
+            pass
+        elif current_status == "withdrawn" and new_status == "applied":
+            pass
+        else:
+            raise ValidationError(   # ✅ ab DRF waala h
+                {"status": f"Status change not allowed from '{current_status}' to '{new_status}'."}
+            )
+
         serializer.save()
-        return Response({'message': 'Status updated successfully'}, status=status.HTTP_200_OK)
+        return Response(
+            {"message": f"Status changed from '{current_status}' to '{new_status}' successfully"},
+            status=status.HTTP_200_OK
+        )
 
-
+    
 class EmployerSearchView(View):
     def get(self, request):
         query = request.GET.get('name', '')
@@ -546,33 +568,43 @@ class EmployerProfileSearchView(generics.ListAPIView):
 
 class EmployerProfileDetailView(generics.RetrieveAPIView):
     """
-    Get detailed employer profile with latest posts and jobs using ID
+    Get detailed employer profile with latest posts, jobs, and leadership team using ID
     """
     queryset = EmployerProfile.objects.select_related('user')
     serializer_class = EmployerProfileSerializer
-    lookup_field = 'id'  # Changed from 'slug' to 'id'
+    lookup_field = 'id'
     permission_classes = [IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
         # Get employer profile by ID
         employer_profile = self.get_object()
-        
-        # Rest of the code remains same...
+
+        # Fetch related data
         latest_company_posts = CompanyPost.objects.filter(
             company=employer_profile
         ).select_related('created_by').order_by('-is_pinned', '-created_at')[:10]
-        
+
         latest_job_posts = JobPost.objects.filter(
             company=employer_profile,
             is_active=True
         ).select_related('created_by').order_by('-is_featured', '-created_at')[:10]
 
+        leadership_team = EmployerLeadership.objects.filter(
+            employer=employer_profile
+        )
+
+        # Serialize
         employer_profile_data = EmployerProfileSerializer(employer_profile).data
         company_posts_data = CompanyPostSerializer(latest_company_posts, many=True).data
         job_posts_data = JobPostSerializer(latest_job_posts, many=True).data
+        leadership_team_data = EmployerLeadershipSerializer(leadership_team, many=True).data
 
         return Response({
             'employer_profile': employer_profile_data,
+            'leadership_team': {
+                'count': leadership_team.count(),
+                'results': leadership_team_data
+            },
             'latest_company_posts': {
                 'count': latest_company_posts.count(),
                 'results': company_posts_data

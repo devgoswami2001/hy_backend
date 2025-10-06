@@ -578,7 +578,7 @@ class EmployerProfileSerializer(serializers.ModelSerializer):
         model = EmployerProfile
         fields = [
             'id', 'user', 'user_email', 'company_name', 'slug', 'designation', 
-            'description', 'website', 'logo', 'banner', 'active_jobs_count', 
+            'description', 'website', 'logo', 'banner', 
             'total_applications_count', 'followers_count', 'created_at'
         ]
 
@@ -666,3 +666,9 @@ class PostCommentSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return obj.user == request.user
         return False
+    
+
+class EmployerLeadershipSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployerLeadership
+        fields = ['id', 'name', 'position', 'bio', 'linkedin', 'photo']   

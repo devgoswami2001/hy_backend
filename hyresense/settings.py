@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-f=b=ifnkzq0!()vr%ih9l*df(&=uz^(44+r=28&dvc8(0%p=4m
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['*','backend.hyresense.com']
 
 
 # Application definition
@@ -68,7 +68,9 @@ CORS_ALLOWED_ORIGINS = [
     "http://172.16.15.55:9002",
     "http://172.16.15.38:9002",
     "http://172.16.15.50:9003",
-    "http://172.16.15.50:9002"
+    "http://172.16.15.50:9002",
+    "https://talent-flow-seven.vercel.app",
+    "https://www.hyresense.com/",
 ]
 CORS_ALLOW_CREDENTIALS = True
 
