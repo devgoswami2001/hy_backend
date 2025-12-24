@@ -80,10 +80,10 @@ class JobSeekerSubscriptionAdmin(admin.ModelAdmin):
     search_fields = ['job_seeker__first_name', 'job_seeker__last_name']
     raw_id_fields = ['job_seeker', 'plan']
 
+
 @admin.register(RazorpayPayment)
 class RazorpayPaymentAdmin(admin.ModelAdmin):
     list_display = ['razorpay_order_id', 'job_seeker', 'amount', 'status', 'created_at']
     list_filter = ['status', 'created_at']
     search_fields = ['razorpay_order_id', 'razorpay_payment_id']
-    raw_id_fields = ['job_seeker', 'subscription']
-
+    raw_id_fields = ['job_seeker', 'subscription_plan', 'jobseeker_subscription']

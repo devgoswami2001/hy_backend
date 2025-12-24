@@ -1,6 +1,6 @@
 # jobseeker/serializers.py
 from rest_framework import serializers
-from .models import JobSeekerProfile, Resume
+from .models import *
 from hyresensemain.models import User
 from .utils.resume_parser import ResumeParser
 from django.db import transaction
@@ -672,3 +672,39 @@ class EmployerLeadershipSerializer(serializers.ModelSerializer):
     class Meta:
         model = EmployerLeadership
         fields = ['id', 'name', 'position', 'bio', 'linkedin', 'photo']   
+
+
+
+
+
+class SubscriptionPlanSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SubscriptionPlan
+        fields = [
+            'id',
+            'name',
+            'plan_type',
+            'price',
+            'daily_swipe_limit',
+            'has_advanced_cards',
+            'has_verified_jobs',
+            'mock_interviews_monthly',
+            'has_profile_review',
+            'has_skill_training',
+            'has_hyresense',
+            'is_active',
+            'created_at',
+        ]
+
+
+
+class JobSeekerMiniSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(source="user.email")
+
+    class Meta:
+        model = JobSeekerProfile
+        fields = [
+            "full_name",
+            "email",
+            "phone_number",
+        ]

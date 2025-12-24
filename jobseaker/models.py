@@ -622,28 +622,141 @@ class JobSeekerSubscription(models.Model):
             self.save(update_fields=['monthly_interviews_used', 'monthly_reset_date'])
 
 
+
+
 class RazorpayPayment(models.Model):
     """Simple payment tracking"""
-    
+
     class Status(models.TextChoices):
         CREATED = 'created', _('Created')
         PAID = 'paid', _('Paid')
         FAILED = 'failed', _('Failed')
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
     job_seeker = models.ForeignKey(JobSeekerProfile, on_delete=models.CASCADE)
-    subscription = models.ForeignKey(JobSeekerSubscription, on_delete=models.SET_NULL, null=True, blank=True)
-    
+
+    # Store SubscriptionPlan (NOT JobSeekerSubscription)
+    subscription_plan = models.ForeignKey(
+        SubscriptionPlan,
+        on_delete=models.CASCADE,
+        null=True,     # <-- add this
+        blank=True,    # <-- add this
+        related_name='payments'
+    )
+
+    # This will only be filled AFTER successful payment
+    jobseeker_subscription = models.ForeignKey(
+        JobSeekerSubscription,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
     razorpay_order_id = models.CharField(max_length=100, unique=True)
     razorpay_payment_id = models.CharField(max_length=100, blank=True)
+    razorpay_signature = models.CharField(max_length=200, blank=True)
+
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.CREATED)
-    
+
     created_at = models.DateTimeField(auto_now_add=True)
     paid_at = models.DateTimeField(null=True, blank=True)
-    
+
     class Meta:
         db_table = 'razorpay_payments'
-    
+
     def __str__(self):
         return f"{self.razorpay_order_id} - ₹{self.amount} - {self.status}"
+
+    def mark_as_paid(self, payment_id, signature):
+        self.razorpay_payment_id = payment_id
+        self.razorpay_signature = signature
+        self.status = self.Status.PAID
+        self.paid_at = timezone.now()
+        self.save()
+
+    def mark_as_failed(self):
+        self.status = self.Status.FAILED
+        self.save()
+
+
+
+
+
+
+class MockInterview(models.Model):
+    """Job seeker requests a mock interview with an expert."""
+
+    class InterviewType(models.TextChoices):
+        BEHAVIORAL = "behavioral", "Behavioral & Situational"
+        TECHNICAL = "technical", "Technical Round"
+        DSA = "dsa", "Data Structures & Algorithms"
+        SYSTEM_DESIGN = "system_design", "System Design"
+        HR = "hr", "HR Interview"
+
+    class Status(models.TextChoices):
+        REQUESTED = "requested", "Requested"
+        UPCOMING = "upcoming", "Upcoming"
+        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+        NO_SHOW = "no_show", "No Show"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # Who requested?
+    job_seeker = models.ForeignKey(
+        JobSeekerProfile,
+        on_delete=models.CASCADE,
+        related_name="mock_interviews"
+    )
+
+    # Expert fields (Assigned later manually or via admin)
+    expert_name = models.CharField(max_length=150, blank=True)
+    expert_designation = models.CharField(max_length=150, blank=True)
+    expert_company = models.CharField(max_length=150, blank=True)
+
+    interview_type = models.CharField(max_length=50, choices=InterviewType.choices)
+
+    # Scheduled date & time
+    date = models.DateField()
+    time = models.TimeField()
+
+    # External Google Meet / Zoom link
+    meeting_link = models.URLField(blank=True)
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.REQUESTED,
+        db_index=True
+    )
+
+    notes = models.TextField(blank=True, help_text="Optional notes from job seeker.")
+
+    # ⭐ Rating (after interview completion)
+    rating = models.DecimalField(
+        max_digits=3,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Rating given by the interviewer (1 to 5)"
+    )
+
+    # Expert written feedback
+    feedback = models.TextField(
+        blank=True,
+        help_text="Expert's feedback after the interview"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    assigned_by_admin = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "mock_interviews"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.job_seeker.full_name} - {self.interview_type}"

@@ -65,12 +65,11 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:9002",
     "http://172.16.15.48:9002",
     "http://172.16.15.39:9002",
-    "http://172.16.15.55:9002",
-    "http://172.16.15.38:9002",
-    "http://172.16.15.50:9003",
-    "http://172.16.15.50:9002",
-    "https://talent-flow-seven.vercel.app",
-    "https://www.hyresense.com/",
+    "http://172.16.15.43:9003",
+    "http://172.16.15.43:9002",
+    "http://172.16.15.70:9003",
+    "http://172.16.15.70:9002",
+    
 ]
 CORS_ALLOW_CREDENTIALS = True
 
@@ -205,8 +204,6 @@ EMAIL_HOST_PASSWORD = 'jyopotlhukbopxgp'
 pp = 'jyop otlh ukbo pxgp'
 
 
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')

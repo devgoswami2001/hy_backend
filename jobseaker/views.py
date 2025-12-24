@@ -15,6 +15,8 @@ from employer.models import JobPost, JobApplication
 from .models import JobSeekerProfile, Resume, User, AIRemarks
 from .serializers import *
 from .permissions import IsJobseekerPermission
+
+from .raz import *
 import logging
 from django.http import JsonResponse
 from django.views import View
@@ -443,7 +445,7 @@ class JobApplicationDetailComprehensiveView(generics.RetrieveAPIView):
 #         }, status=404)
 #     except Exception as e:
 #         return JsonResponse({
-#             'success': False,
+#             'success': False,upload_resume
 #             'message': f'Error generating PDF: {str(e)}'
 #         }, status=500)
 
@@ -870,3 +872,155 @@ class PostCommentViewSet(ModelViewSet):
         comment.save(update_fields=['likes_count'])
         return Response({'liked': liked, 'likes_count': comment.likes_count})
 
+
+
+
+class SubscriptionPlanWithUserView(APIView):
+
+    def get(self, request):
+        # -------- Jobseeker Data --------
+        try:
+            profile = request.user.jobseeker_profile
+            jobseeker_data = JobSeekerMiniSerializer(profile).data
+        except:
+            jobseeker_data = None
+
+        # -------- Subscription Plans --------
+        plans = SubscriptionPlan.objects.filter(is_active=True).order_by("price")
+        plan_data = SubscriptionPlanSerializer(plans, many=True).data
+
+        return Response({
+            "jobseeker": jobseeker_data,
+            "subscriptions": plan_data
+        })
+
+
+
+class CreateRazorpayOrderView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """
+        Expected:
+        {
+            "subscription_id": "<uuid>"
+        }
+        """
+
+        subscription_id = request.data.get("subscription_id")
+
+        if not subscription_id:
+            return Response(
+                {"error": "subscription_id is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Fetch subscription plan securely
+        try:
+            plan = SubscriptionPlan.objects.get(id=subscription_id, is_active=True)
+        except SubscriptionPlan.DoesNotExist:
+            return Response(
+                {"error": "Invalid subscription plan"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Get price from backend ONLY
+        amount = float(plan.price)
+
+        # Create Razorpay Order
+        order = create_order(amount)
+
+        if order is None:
+            return Response(
+                {"error": "Failed to create Razorpay order"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # (Optional) save to your RazorpayPayment model
+        payment = RazorpayPayment.objects.create(
+            job_seeker=request.user.jobseeker_profile,
+            subscription_plan=plan,      # ✔ updated
+            amount=plan.price,
+            razorpay_order_id=order["id"],
+            status='created'
+        )        
+
+        return Response(
+            {
+                "message": "Order created successfully",
+                "subscription": {
+                    "id": str(plan.id),
+                    "name": plan.name,
+                    "price": str(plan.price),
+                },
+                "order": order
+            },
+            status=status.HTTP_201_CREATED
+        )
+
+
+
+class VerifyPaymentView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        razorpay_payment_id = request.data.get("razorpay_payment_id")
+        razorpay_order_id = request.data.get("razorpay_order_id")
+        razorpay_signature = request.data.get("razorpay_signature")
+
+        # 1) Validate inputs
+        if not all([razorpay_payment_id, razorpay_order_id, razorpay_signature]):
+            return Response({"error": "Missing payment details"}, status=400)
+
+        # 2) Fetch payment record
+        try:
+            payment = RazorpayPayment.objects.get(
+                razorpay_order_id=razorpay_order_id,
+                job_seeker=request.user.jobseeker_profile
+            )
+        except RazorpayPayment.DoesNotExist:
+            return Response({"error": "Payment record not found"}, status=404)
+
+        # ------------------------------------------------------
+        # 3) VERIFY USING YOUR FUNCTION
+        # ------------------------------------------------------
+        is_valid = verify_payment(
+            order_id=razorpay_order_id,
+            payment_id=razorpay_payment_id,
+            signature=razorpay_signature
+        )
+
+        if not is_valid:
+            payment.mark_as_failed()
+            return Response({"error": "Invalid payment signature"}, status=400)
+
+        # ------------------------------------------------------
+        # 4) Mark payment as PAID
+        # ------------------------------------------------------
+        payment.mark_as_paid(
+            payment_id=razorpay_payment_id,
+            signature=razorpay_signature
+        )
+
+        # ------------------------------------------------------
+        # 5) Create JobSeekerSubscription
+        # ------------------------------------------------------
+        subscription = JobSeekerSubscription.objects.create(
+            job_seeker=request.user.jobseeker_profile,
+            plan=payment.subscription_plan,
+            status="active",
+            start_date=timezone.now().date(),
+            end_date=timezone.now().date() + timezone.timedelta(days=30),
+        )
+
+        # Link payment → subscription
+        payment.jobseeker_subscription = subscription
+        payment.save(update_fields=['jobseeker_subscription'])
+
+        # Final response
+        return Response({
+            "message": "Payment verified successfully",
+            "subscription_status": "active",
+            "plan": payment.subscription_plan.name,
+            "valid_till": subscription.end_date
+        }, status=200)

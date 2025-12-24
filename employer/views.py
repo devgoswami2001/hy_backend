@@ -253,17 +253,14 @@ class EmployerProfileViewSet(viewsets.ModelViewSet):
         user = self.request.user
         
         if self.action == 'list':
-            # Admin users see all, others see filtered
             if user.is_staff or user.role == 'admin':
                 return EmployerProfile.objects.select_related('user').prefetch_related('job_posts')
             else:
-                # Regular users see only their accessible profiles
                 profile = self.get_employer_profile(user)
                 if profile:
                     return EmployerProfile.objects.filter(id=profile.id).select_related('user').prefetch_related('job_posts')
                 return EmployerProfile.objects.none()
         
-        # For detail view, retrieve, update, delete
         profile = self.get_employer_profile(user)
         if profile:
             return EmployerProfile.objects.filter(id=profile.id).select_related('user')
@@ -274,11 +271,9 @@ class EmployerProfileViewSet(viewsets.ModelViewSet):
         obj = super().get_object()
         user = self.request.user
         
-        # Admin users can access all
         if user.is_staff or user.role == 'admin':
             return obj
         
-        # Check if user has access to this profile
         user_profile = self.get_employer_profile(user)
         if not user_profile or obj.id != user_profile.id:
             raise PermissionDenied("You don't have permission to access this employer profile")
@@ -291,13 +286,11 @@ class EmployerProfileViewSet(viewsets.ModelViewSet):
         return EmployerProfileSerializer
 
     def perform_create(self, serializer):
-        # Only employers can create profiles
         if self.request.user.role != 'employer':
             raise PermissionDenied("Only employers can create employer profiles")
             
         serializer.save(user=self.request.user)
         
-        # Log activity
         ActivityLog.objects.create(
             user=self.request.user,
             role=self.request.user.role,
@@ -310,7 +303,6 @@ class EmployerProfileViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         user = self.request.user
         
-        # Check HR permissions for editing
         if user.role == 'hr':
             hr_record = getattr(user, 'hr_user', None)
             if not hr_record or not hr_record.can_edit_profile:
@@ -330,9 +322,8 @@ class EmployerProfileViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def stats(self, request, pk=None):
         """Get company statistics"""
-        profile = self.get_object()  # This already checks permissions
+        profile = self.get_object()
         
-        # Cache key for stats
         cache_key = f"employer_stats_{profile.id}"
         stats = cache.get(cache_key)
         
@@ -360,7 +351,6 @@ class EmployerProfileViewSet(viewsets.ModelViewSet):
                 'company_name': profile.company_name,
                 'user_role': request.user.role
             }
-            # Cache for 15 minutes
             cache.set(cache_key, stats, 900)
         
         serializer = EmployerProfileStatsSerializer(stats)
@@ -368,66 +358,124 @@ class EmployerProfileViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def dashboard(self, request, pk=None):
-        """Get employer dashboard data"""
-        profile = self.get_object()  # This already checks permissions
-        
-        # Recent applications (last 30 days)
+        profile = self.get_object()
+
+        today = timezone.now().date()
+        start_date = today - timedelta(days=30)
+
+        # --------------------------
+        # RECENT APPLICATIONS
+        # --------------------------
         recent_applications = JobApplication.objects.filter(
             job_post__company=profile,
             applied_at__gte=timezone.now() - timedelta(days=30),
             is_deleted=False
         ).select_related('applicant', 'job_post').order_by('-applied_at')[:10]
-        
-        # Top performing jobs
-        top_jobs = profile.job_posts.filter(
-            is_active=True
-        ).annotate(
+
+        # --------------------------
+        # TOP JOBS
+        # --------------------------
+        top_jobs = profile.job_posts.filter(is_active=True).annotate(
             app_count=Count('applications', filter=Q(applications__is_deleted=False))
         ).order_by('-app_count')[:5]
-        
+
+        # --------------------------
+        # 30-DAY DAILY TREND
+        # --------------------------
+        from django.db.models.functions import TruncDate
+
+        application_trend = (
+            JobApplication.objects.filter(
+                job_post__company=profile,
+                applied_at__date__gte=start_date,
+                is_deleted=False
+            )
+            .annotate(date=TruncDate('applied_at'))
+            .values('date')
+            .annotate(
+                total=Count('id'),
+                pending=Count('id', filter=Q(status='applied')),
+                shortlisted=Count('id', filter=Q(status='shortlisted')),
+                hired=Count('id', filter=Q(status='hired')),
+            )
+            .order_by('date')
+        )
+
+        jobs_created_trend = (
+            profile.job_posts.filter(created_at__date__gte=start_date)
+            .annotate(date=TruncDate('created_at'))
+            .values('date')
+            .annotate(total=Count('id'))
+            .order_by('date')
+        )
+
+        # --------------------------
+        # 12-MONTH MONTHLY TREND
+        # --------------------------
+        from django.db.models.functions import TruncMonth
+
+        yearly_trend = (
+            JobApplication.objects.filter(
+                job_post__company=profile,
+                applied_at__date__gte=today.replace(year=today.year - 1),
+                is_deleted=False
+            )
+            .annotate(month=TruncMonth('applied_at'))
+            .values('month')
+            .annotate(
+                total_applications=Count('id'),
+                hired=Count('id', filter=Q(status='hired'))
+            )
+            .order_by('month')
+        )
+
+        # --------------------------
+        # FINAL RESPONSE
+        # --------------------------
         dashboard_data = {
-            'profile_info': {
-                'company_name': profile.company_name,
-                'user_role': request.user.role,
-                'user_email': request.user.email
+            "profile_info": {
+                "company_name": profile.company_name,
+                "user_role": request.user.role,
+                "user_email": request.user.email,
             },
-            'stats': {
-                'total_jobs': profile.active_jobs_count,
-                'active_jobs': profile.job_posts.filter(
-                    is_active=True, 
-                    deadline__gte=timezone.now().date()
+            "stats": {
+                "total_jobs": profile.active_jobs_count,
+                "active_jobs": profile.job_posts.filter(
+                    is_active=True,
+                    deadline__gte=today
                 ).count(),
-                'total_applications': profile.total_applications_count,
-                'pending_applications': JobApplication.objects.filter(
-                    job_post__company=profile, 
-                    status='applied',
+                "total_applications": profile.total_applications_count,
+                "pending_applications": JobApplication.objects.filter(
+                    job_post__company=profile,
+                    status="applied",
                     is_deleted=False
                 ).count(),
-                'shortlisted_applications': JobApplication.objects.filter(
-                    job_post__company=profile, 
-                    status='shortlisted',
+                "shortlisted_applications": JobApplication.objects.filter(
+                    job_post__company=profile,
+                    status="shortlisted",
                     is_deleted=False
                 ).count(),
-                'hired_candidates': JobApplication.objects.filter(
-                    job_post__company=profile, 
-                    status='hired',
+                "hired_candidates": JobApplication.objects.filter(
+                    job_post__company=profile,
+                    status="hired",
                     is_deleted=False
                 ).count(),
             },
-            'recent_activities': {
-                'recent_applications': JobApplicationSerializer(
-                    recent_applications, 
-                    many=True, 
-                    context={'request': request}
+            "trends": {
+                "daily_applications": list(application_trend),
+                "daily_jobs_created": list(jobs_created_trend),
+                "monthly_applications": list(yearly_trend)
+            },
+            "recent_activities": {
+                "recent_applications": JobApplicationSerializer(
+                    recent_applications, many=True, context={"request": request}
                 ).data,
-                'top_performing_jobs': JobPostListSerializer(
-                    top_jobs, 
-                    many=True, 
-                    context={'request': request}
-                ).data
+                "top_performing_jobs": JobPostListSerializer(
+                    top_jobs, many=True, context={"request": request}
+                ).data,
             }
         }
-        
+
         serializer = EmployerDashboardSerializer(dashboard_data)
         return Response(serializer.data)
 
@@ -435,11 +483,8 @@ class EmployerProfileViewSet(viewsets.ModelViewSet):
         """Get client IP address"""
         x_forwarded_for = self.request.META.get('HTTP_X_FORWARDED_FOR')
         if x_forwarded_for:
-            ip = x_forwarded_for.split(',')[0]
-        else:
-            ip = self.request.META.get('REMOTE_ADDR')
-        return ip
-
+            return x_forwarded_for.split(',')[0]
+        return self.request.META.get('REMOTE_ADDR')
 
 # ============================================================================
 # MONTHLY STATISTICS VIEWS

@@ -43,4 +43,10 @@ urlpatterns = [
     path('company/<int:company_id>/follow-status/', views.check_follow_status, name='check-follow-status'),
 
 
+    path('subscriptions/', SubscriptionPlanWithUserView.as_view(), name='subscription-list'),
+    path("payments/create-order/", CreateRazorpayOrderView.as_view(), name="create-razorpay-order"),
+    path("payments/verify/", VerifyPaymentView.as_view(), name="verify-payment"),
+
+
+
 ]
