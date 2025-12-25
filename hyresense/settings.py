@@ -203,8 +203,5 @@ EMAIL_HOST_PASSWORD = 'jyopotlhukbopxgp'
 pp = 'jyop otlh ukbo pxgp'
 
 
-OPENAI_API_KEY = "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"
-
-
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
