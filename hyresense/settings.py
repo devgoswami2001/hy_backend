@@ -200,11 +200,6 @@ EMAIL_HOST = 'smtpout.secureserver.net'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 
-EMAIL_HOST_USER = 'connect@hyresense.com'
-EMAIL_HOST_PASSWORD = 'Abhi@2256'
-
-DEFAULT_FROM_EMAIL = 'HyreSense <connect@hyresense.com>'
-
 
 
 MEDIA_URL = '/media/'
