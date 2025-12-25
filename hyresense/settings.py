@@ -195,15 +195,16 @@ AUTH_USER_MODEL = 'hyresensemain.User'
 
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
+
+EMAIL_HOST = 'smtpout.secureserver.net'
+EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_PORT = 587 
-EMAIL_HOST_USER = 'devtherealgoat@gmail.com'
-EMAIL_HOST_PASSWORD = 'jyopotlhukbopxgp'
-pp = 'jyop otlh ukbo pxgp'
 
+EMAIL_HOST_USER = 'connect@hyresense.com'
+EMAIL_HOST_PASSWORD = 'Abhi@2256'
 
-OPENAI_API_KEY = "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"
+DEFAULT_FROM_EMAIL = 'HyreSense <connect@hyresense.com>'
+
 
 
 MEDIA_URL = '/media/'
