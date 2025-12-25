@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import OTP
+from .models import *
 from .utils import send_otp_email
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
@@ -181,4 +181,22 @@ class JobSeekerRegistrationSerializer(serializers.ModelSerializer):
             return user
         except Exception as e:
             raise serializers.ValidationError(f"Error creating user: {str(e)}")
+
+
+class EarlyAccessRequestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EarlyAccessRequest
+        fields = ["id", "email", "created_at"]
+        read_only_fields = ["id", "created_at"]
+
+
+
+
+class ContactMessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContactMessage
+        fields = ["id", "full_name", "email", "subject", "message", "created_at"]
+        read_only_fields = ["id", "created_at"]
+
+
 

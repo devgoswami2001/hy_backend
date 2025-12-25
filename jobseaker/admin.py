@@ -87,3 +87,74 @@ class RazorpayPaymentAdmin(admin.ModelAdmin):
     list_filter = ['status', 'created_at']
     search_fields = ['razorpay_order_id', 'razorpay_payment_id']
     raw_id_fields = ['job_seeker', 'subscription_plan', 'jobseeker_subscription']
+
+
+@admin.register(MockInterview)
+class MockInterviewAdmin(admin.ModelAdmin):
+
+    list_display = (
+        "job_seeker",
+        "interview_type",
+        "status",
+        "date",
+        "time",
+        "expert_name",
+        "assigned_by_admin",
+        "created_at",
+    )
+
+    list_filter = (
+        "status",
+        "interview_type",
+        "assigned_by_admin",
+        "date",
+        "created_at",
+    )
+
+    search_fields = (
+        "job_seeker__full_name",
+        "expert_name",
+        "expert_company",
+        "meeting_link",
+    )
+
+    ordering = ("-created_at",)
+
+    date_hierarchy = "created_at"
+
+    list_editable = (
+        "status",
+        "date",
+        "time",
+        "expert_name",
+        "assigned_by_admin",
+    )
+
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+    )
+
+    fieldsets = (
+        ("Job Seeker Info", {
+            "fields": ("job_seeker", "interview_type", "notes")
+        }),
+        ("Interview Schedule (Admin)", {
+            "fields": (
+                "date",
+                "time",
+                "expert_name",
+                "expert_designation",
+                "expert_company",
+                "meeting_link",
+                "assigned_by_admin",
+            )
+        }),
+        ("Interview Status", {
+            "fields": ("status", "rating", "feedback")
+        }),
+        ("Timestamps", {
+            "fields": ("created_at", "updated_at")
+        }),
+    )
+

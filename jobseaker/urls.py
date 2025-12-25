@@ -46,7 +46,8 @@ urlpatterns = [
     path('subscriptions/', SubscriptionPlanWithUserView.as_view(), name='subscription-list'),
     path("payments/create-order/", CreateRazorpayOrderView.as_view(), name="create-razorpay-order"),
     path("payments/verify/", VerifyPaymentView.as_view(), name="verify-payment"),
-
-
+    path("mock-interviews/request/", JobSeekerMockInterviewCreateView.as_view(), name="mock-interview-request"),
+    path("mock-interviews/my/", JobSeekerMockInterviewListView.as_view(), name="mock-interview-list"),
+    
 
 ]

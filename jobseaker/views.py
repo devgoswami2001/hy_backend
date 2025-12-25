@@ -1024,3 +1024,35 @@ class VerifyPaymentView(APIView):
             "plan": payment.subscription_plan.name,
             "valid_till": subscription.end_date
         }, status=200)
+
+
+
+class JobSeekerMockInterviewCreateView(generics.CreateAPIView):
+    """
+    Job seeker requests a new mock interview
+    """
+    serializer_class = MockInterviewCreateSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+
+class JobSeekerMockInterviewListView(generics.ListAPIView):
+    """
+    Job seeker views all their interview requests
+    """
+    serializer_class = MockInterviewListSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return MockInterview.objects.filter(
+            job_seeker=self.request.user.jobseeker_profile
+        ).order_by("-created_at")
+
+
+
+
+
+
+

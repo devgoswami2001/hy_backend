@@ -708,3 +708,67 @@ class JobSeekerMiniSerializer(serializers.ModelSerializer):
             "email",
             "phone_number",
         ]
+
+
+
+class MockInterviewCreateSerializer(serializers.ModelSerializer):
+    """Job seeker creates interview request"""
+
+    class Meta:
+        model = MockInterview
+        fields = [
+            "id",
+            "interview_type",
+            "date",
+            "time",
+            "notes",
+        ]
+        read_only_fields = ["id"]
+
+    def create(self, validated_data):
+        user = self.context["request"].user
+
+        return MockInterview.objects.create(
+            job_seeker=user.jobseeker_profile,
+            status=MockInterview.Status.REQUESTED,
+            **validated_data
+        )
+
+
+class MockInterviewListSerializer(serializers.ModelSerializer):
+    interview_type_display = serializers.CharField(
+        source="get_interview_type_display", read_only=True
+    )
+    status_display = serializers.CharField(
+        source="get_status_display", read_only=True
+    )
+
+    class Meta:
+        model = MockInterview
+        fields = [
+            "id",
+            "interview_type",
+            "interview_type_display",
+            "date",
+            "time",
+            "status",
+            "status_display",
+            "expert_name",
+            "expert_designation",
+            "expert_company",
+            "meeting_link",
+            "rating",
+            "feedback",
+            "created_at",
+        ]
+
+
+
+
+
+
+
+
+
+
+

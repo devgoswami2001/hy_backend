@@ -63,9 +63,8 @@ ROOT_URLCONF = 'hyresense.urls'
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:9002",
-    "http://172.16.15.48:9002",
-    "http://172.16.15.39:9002",
-    "http://172.16.15.43:9003",
+    "http://192.168.1.3:9003",
+    "http://192.168.1.3:9002",
     "http://172.16.15.43:9002",
     "http://172.16.15.70:9003",
     "http://172.16.15.70:9002",
@@ -203,6 +202,8 @@ EMAIL_HOST_USER = 'devtherealgoat@gmail.com'
 EMAIL_HOST_PASSWORD = 'jyopotlhukbopxgp'
 pp = 'jyop otlh ukbo pxgp'
 
+
+OPENAI_API_KEY = "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"
 
 
 MEDIA_URL = '/media/'

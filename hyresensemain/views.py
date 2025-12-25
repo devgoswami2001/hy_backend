@@ -122,3 +122,15 @@ class JobSeekerRegisterView(generics.CreateAPIView):
                 "last_name": user.last_name
             }
         }, status=status.HTTP_201_CREATED)
+    
+
+
+from rest_framework import generics, permissions
+class EarlyAccessRequestCreateView(generics.CreateAPIView):
+    serializer_class = EarlyAccessRequestSerializer
+    permission_classes = [permissions.AllowAny]
+
+
+class ContactMessageCreateView(generics.CreateAPIView):
+    serializer_class = ContactMessageSerializer
+    permission_classes = [permissions.AllowAny]

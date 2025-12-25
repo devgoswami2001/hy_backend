@@ -51,3 +51,42 @@ class OTP(models.Model):
     @staticmethod
     def generate_otp():
         return ''.join(random.choices(string.digits, k=6))
+    
+
+
+class EarlyAccessRequest(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    email = models.EmailField(unique=True)
+    is_contacted = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "early_access_requests"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.email
+
+
+
+
+class ContactMessage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    full_name = models.CharField(max_length=150)
+    email = models.EmailField()
+    subject = models.CharField(max_length=200)
+    message = models.TextField()
+
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "contact_messages"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.full_name} - {self.subject}"
+

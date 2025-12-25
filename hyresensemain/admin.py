@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, OTP
+from .models import *
 
 class CustomUserAdmin(BaseUserAdmin):
     model = User
@@ -32,3 +32,23 @@ class OTPAdmin(admin.ModelAdmin):
     list_filter = ('is_verified',)
     search_fields = ('user__email', 'otp_code')
     ordering = ('-created_at',)
+
+
+@admin.register(EarlyAccessRequest)
+class EarlyAccessRequestAdmin(admin.ModelAdmin):
+    list_display = ("email", "is_contacted", "created_at")
+    list_filter = ("is_contacted", "created_at")
+    search_fields = ("email",)
+    ordering = ("-created_at",)
+    list_editable = ("is_contacted",)
+
+
+
+@admin.register(ContactMessage)
+class ContactMessageAdmin(admin.ModelAdmin):
+    list_display = ("full_name", "email", "subject", "is_read", "created_at")
+    list_filter = ("is_read", "created_at")
+    search_fields = ("full_name", "email", "subject")
+    ordering = ("-created_at",)
+    list_editable = ("is_read",)
+

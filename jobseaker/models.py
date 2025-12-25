@@ -719,8 +719,9 @@ class MockInterview(models.Model):
     interview_type = models.CharField(max_length=50, choices=InterviewType.choices)
 
     # Scheduled date & time
-    date = models.DateField()
-    time = models.TimeField()
+    date = models.DateField(null=True, blank=True)
+    time = models.TimeField(null=True, blank=True)
+
 
     # External Google Meet / Zoom link
     meeting_link = models.URLField(blank=True)
@@ -760,3 +761,9 @@ class MockInterview(models.Model):
 
     def __str__(self):
         return f"{self.job_seeker.full_name} - {self.interview_type}"
+
+
+
+
+
+
