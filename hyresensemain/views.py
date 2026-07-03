@@ -7,10 +7,15 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from google.oauth2 import id_token
 from google.auth.transport import requests
-from django.contrib.auth.models import User
 from rest_framework.views import APIView
+from django.db import transaction
+from django.utils.crypto import get_random_string
+from .utils.google_auth import verify_google_token
+from .utils.jwt import generate_tokens
 
+from django.contrib.auth import get_user_model
 
+User = get_user_model()
 
 class UserRegistrationView(generics.CreateAPIView):
     serializer_class = UserRegistrationSerializer
@@ -66,44 +71,6 @@ class VerifyOTPView(generics.CreateAPIView):
             return Response(result, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-
-
-@api_view(['POST'])
-def google_login(request):
-    token = request.data.get('token')
-    try:
-        # ✅ Verify token with Google
-        idinfo = id_token.verify_oauth2_token(
-            token, requests.Request(),
-            "678219388222-er6kua6quleaj7slhp515qil27inh2f2.apps.googleusercontent.com"
-        )
-
-        email = idinfo['email']
-        name = idinfo.get('name', '')
-        username = email.split('@')[0]
-
-        # ✅ Create or get user
-        user, created = User.objects.get_or_create(email=email, defaults={
-            'username': username
-        })
-
-        # ✅ Issue JWT tokens
-        refresh = RefreshToken.for_user(user)
-
-        return Response({
-            'access': str(refresh.access_token),
-            'refresh': str(refresh),
-            'user': {
-                'email': user.email,
-                'username': user.username,
-            }
-        })
-
-    except Exception as e:
-        return Response({'error': str(e)}, status=400)
-
-
-
 class JobSeekerRegisterView(generics.CreateAPIView):
     serializer_class = JobSeekerRegistrationSerializer
     permission_classes = []  # No permissions required for registration
@@ -123,8 +90,6 @@ class JobSeekerRegisterView(generics.CreateAPIView):
             }
         }, status=status.HTTP_201_CREATED)
     
-
-
 from rest_framework import generics, permissions
 class EarlyAccessRequestCreateView(generics.CreateAPIView):
     serializer_class = EarlyAccessRequestSerializer
@@ -134,3 +99,71 @@ class EarlyAccessRequestCreateView(generics.CreateAPIView):
 class ContactMessageCreateView(generics.CreateAPIView):
     serializer_class = ContactMessageSerializer
     permission_classes = [permissions.AllowAny]
+
+
+
+class GoogleLoginView(APIView):
+    permission_classes = []
+
+    @transaction.atomic
+    def post(self, request):
+        token = request.data.get("token")
+
+        if not token:
+            return Response(
+                {"error": "Google token is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Verify Google token
+        google_data = verify_google_token(token)
+        if not google_data:
+            return Response(
+                {"error": "Invalid or expired Google token"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        email = google_data["email"]
+        first_name = google_data["first_name"]
+        last_name = google_data["last_name"]
+
+        # Get or create user
+        user, created = User.objects.get_or_create(
+            email=email,
+            defaults={
+                "username": email.split("@")[0],
+                "first_name": first_name,
+                "last_name": last_name,
+                "role": User.Roles.JOBSEEKER,
+                "is_active": True,
+            },
+        )
+
+        if created:
+            user.set_password(get_random_string(32))
+            user.save()
+
+        if not user.is_active:
+            return Response(
+                {"error": "Account is disabled"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        tokens = generate_tokens(user)
+
+        return Response(
+            {
+                "message": "Login successful",
+                "is_new_user": created,
+                "user": {
+                    "id": str(user.id),
+                    "email": user.email,
+                    "role": user.role,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                },
+                "tokens": tokens,
+            },
+            status=status.HTTP_200_OK,
+        )
+

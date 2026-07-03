@@ -9,5 +9,6 @@ urlpatterns = [
     path('otp/verify', VerifyOTPView.as_view(), name='verify_otp'),
     path("early-access/request/", EarlyAccessRequestCreateView.as_view(), name="early-access-request"),
     path("contact/send-message/", ContactMessageCreateView.as_view(), name="contact-send-message"),
+    path("auth/google/login/", GoogleLoginView.as_view()),
 
 ]

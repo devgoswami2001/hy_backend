@@ -158,3 +158,59 @@ class MockInterviewAdmin(admin.ModelAdmin):
         }),
     )
 
+
+@admin.register(PayUPayment)
+class PayUPaymentAdmin(admin.ModelAdmin):
+    list_display = (
+        'txnid',
+        'job_seeker',
+        'plan',
+        'amount',
+        'status',
+        'payu_payment_id',
+        'bank_ref_num',
+        'created_at'
+    )
+
+    list_filter = (
+        'status',
+        'plan',
+        'created_at'
+    )
+
+    search_fields = (
+        'txnid',
+        'payu_payment_id',
+        'bank_ref_num',
+        'job_seeker__user__email',
+    )
+
+    readonly_fields = (
+        'id',
+        'created_at',
+        'updated_at',
+        'raw_response'
+    )
+
+    ordering = ('-created_at',)
+
+
+@admin.register(SubscriptionActivation)
+class SubscriptionActivationAdmin(admin.ModelAdmin):
+    list_display = (
+        'subscription',
+        'payment',
+        'activated_at'
+    )
+
+    search_fields = (
+        'subscription__plan__name',
+        'payment__txnid',
+    )
+
+    readonly_fields = (
+        'id',
+        'activated_at'
+    )
+
+

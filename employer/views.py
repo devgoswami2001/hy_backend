@@ -2572,3 +2572,398 @@ class ApplicationProfileView(APIView):
         return Response(ApplicationProfileViewSerializer(payload).data, status=status.HTTP_200_OK)
 
 
+
+
+
+class SendJobApplicationMessageView(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+
+        serializer = SendMessageSerializer(
+            data=request.data,
+            context={"request": request}
+        )
+
+        serializer.is_valid(raise_exception=True)
+
+        user = request.user
+        job_application = serializer.validated_data["job_application"]
+
+        message_text = serializer.validated_data.get("message")
+        attachment = serializer.validated_data.get("attachment")
+
+        # 🚨 require message or file
+        if not message_text and not attachment:
+            return Response(
+                {"detail": "Message or attachment is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # check existing thread
+        chat = JobApplicationChat.objects.filter(
+            job_application=job_application
+        ).first()
+
+        # 🚨 jobseeker cannot start conversation
+        if not chat and user.role == "jobseeker":
+            return Response(
+                {"detail": "Employer must start the conversation."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # create thread if employer sends first message
+        if not chat and user.role == "employer":
+
+            chat = JobApplicationChat.objects.create(
+                job_application=job_application,
+                jobseeker=job_application.applicant,
+                employer=user,
+                last_message_at=timezone.now()
+            )
+
+        # determine message type
+        message_type = "file" if attachment else "text"
+
+        # create message
+        message = JobApplicationMessage.objects.create(
+            chat=chat,
+            sender=user,
+            message=message_text,
+            attachment=attachment,
+            message_type=message_type
+        )
+
+        chat.last_message_at = timezone.now()
+        chat.save(update_fields=["last_message_at"])
+
+        return Response(
+            JobApplicationMessageSerializer(
+                message,
+                context={"request": request}
+            ).data,
+            status=status.HTTP_201_CREATED
+        )
+
+
+
+from rest_framework.generics import ListAPIView
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import PermissionDenied
+
+
+class JobApplicationChatMessagesView(ListAPIView):
+
+    serializer_class = JobApplicationMessageSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+
+        user = self.request.user
+        job_application_id = self.kwargs.get("job_application_id")
+
+        chat = JobApplicationChat.objects.filter(
+            job_application_id=job_application_id
+        ).first()
+
+        if not chat:
+            return JobApplicationChat.objects.none()
+
+        # permission check
+        if user not in [chat.jobseeker, chat.employer]:
+            raise PermissionDenied("You cannot view this chat.")
+
+        return chat.messages.select_related("sender").order_by("sent_at")
+
+
+
+
+class EmployerSubscriptionPlanListView(ListAPIView):
+
+    serializer_class = EmployerSubscriptionPlanSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+
+        return EmployerSubscriptionPlan.objects.filter(
+            is_active=True
+        ).order_by("price")
+
+import json
+import uuid
+from datetime import timedelta
+
+from django.http import HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.utils import timezone
+from django.conf import settings
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework import status
+
+from jobseaker.utilss import generate_payu_hash
+
+
+# ======================================
+# Start Employer Subscription Payment
+# ======================================
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def start_employer_payu_payment(request):
+
+    plan_id = request.data.get("plan_id") or request.data.get("subscription_id")
+
+    if not plan_id:
+        return Response({"error": "plan_id is required"}, status=400)
+
+    try:
+        employer = request.user.employer_profile
+    except Exception:
+        return Response({"error": "Employer profile not found"}, status=404)
+
+    try:
+        plan = EmployerSubscriptionPlan.objects.get(id=plan_id)
+    except EmployerSubscriptionPlan.DoesNotExist:
+        return Response({"error": "Invalid subscription plan"}, status=404)
+
+    payment = EmployerPayUPayment.objects.create(
+        employer=employer,
+        plan=plan,
+        txnid=str(uuid.uuid4()),
+        amount=plan.price,
+        payment_type="subscription",
+        raw_response={}
+    )
+
+    payu_data = {
+        "key": settings.PAYU_MERCHANT_KEY,
+        "txnid": payment.txnid,
+        "amount": str(payment.amount),
+        "productinfo": plan.name,
+        "firstname": employer.company_name,
+        "email": request.user.email,
+        "phone": "",
+        "surl": settings.PAYU_SUCCESS_URL_R,
+        "furl": settings.PAYU_FAILURE_URL_R,
+        "service_provider": "payu_paisa",
+    }
+
+    payu_data["hash"] = generate_payu_hash(payu_data)
+
+    return Response({
+        "payu_url": settings.PAYU_LIVE_URL,
+        "payu_data": payu_data
+    })
+
+
+# ======================================
+# Request Additional HR Seats
+# ======================================
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def request_hr_seats(request):
+
+    employer = request.user.employer_profile
+    seats = int(request.data.get("seats", 1))
+
+    subscription = employer.subscription
+
+    amount = seats * subscription.plan.extra_hr_login_price
+
+    payment = EmployerPayUPayment.objects.create(
+        employer=employer,
+        txnid=str(uuid.uuid4()),
+        amount=amount,
+        payment_type="hr_seat",
+        seats=seats,
+        raw_response={}
+    )
+
+    payu_data = {
+        "key": settings.PAYU_MERCHANT_KEY,
+        "txnid": payment.txnid,
+        "amount": str(payment.amount),
+        "productinfo": f"{seats} HR Seats",
+        "firstname": employer.company_name,
+        "email": request.user.email,
+        "phone": "",
+        "surl": settings.PAYU_SUCCESS_URL_R,
+        "furl": settings.PAYU_FAILURE_URL_R,
+        "service_provider": "payu_paisa",
+    }
+
+    payu_data["hash"] = generate_payu_hash(payu_data)
+
+    return Response({
+        "payu_url": settings.PAYU_LIVE_URL,
+        "payu_data": payu_data
+    })
+
+
+# ======================================
+# PayU Webhook
+# ======================================
+
+@csrf_exempt
+def employer_payu_webhook(request):
+
+    print("🔥 EMPLOYER PAYU WEBHOOK HIT")
+
+    if request.method != "POST":
+        return HttpResponse("Invalid request", status=405)
+
+    try:
+
+        raw_body = request.body
+
+        try:
+            payload = json.loads(raw_body)
+        except Exception:
+            payload = request.POST.dict()
+
+        txnid = payload.get("merchantTransactionId")
+
+        if not txnid:
+            return HttpResponse("Missing txnid", status=400)
+
+        payment = EmployerPayUPayment.objects.filter(txnid=txnid).first()
+
+        if not payment:
+            return HttpResponse("Payment not found", status=404)
+
+        payment.payu_payment_id = payload.get("paymentId")
+        payment.bank_ref_num = payload.get("bankRefNum")
+        payment.raw_response = payload
+
+        payment_status = payload.get("status", "").lower()
+
+        # ======================================
+        # SUCCESS
+        # ======================================
+
+        if payment_status == "success":
+
+            payment.status = EmployerPayUPayment.Status.SUCCESS
+            payment.save()
+
+            employer = payment.employer
+            now = timezone.now()
+
+            # -------------------------
+            # SUBSCRIPTION PAYMENT
+            # -------------------------
+            if payment.payment_type == "subscription":
+
+                plan = payment.plan
+
+                existing_sub = EmployerSubscription.objects.filter(
+                    employer=employer,
+                    is_active=True
+                ).first()
+
+                if existing_sub:
+                    existing_sub.is_active = False
+                    existing_sub.end_date = now
+                    existing_sub.save()
+
+                end_date = now + timedelta(days=plan.duration_days)
+
+                EmployerSubscription.objects.create(
+                    employer=employer,
+                    plan=plan,
+                    start_date=now,
+                    end_date=end_date,
+                    is_active=True
+                )
+
+                print("🎉 Employer subscription activated")
+
+            # -------------------------
+            # HR SEAT PAYMENT
+            # -------------------------
+            elif payment.payment_type == "hr_seat":
+
+                subscription = EmployerSubscription.objects.filter(
+                    employer=employer,
+                    is_active=True
+                ).first()
+
+                if subscription:
+                    subscription.purchased_hr_seats += payment.seats
+                    subscription.save()
+
+                    print("✅ HR seats added:", payment.seats)
+
+        # ======================================
+        # FAILURE
+        # ======================================
+
+        elif payment_status == "failure":
+
+            payment.status = EmployerPayUPayment.Status.FAILED
+            payment.save()
+
+            print("❌ Employer payment failed")
+
+        else:
+            payment.save()
+
+        return HttpResponse("OK", status=200)
+
+    except Exception as e:
+
+        print("🔥 WEBHOOK ERROR:", str(e))
+
+        return HttpResponse("OK", status=200)
+
+
+# ======================================
+# Employer Active Subscription
+# ======================================
+
+class EmployerActiveSubscriptionView(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+
+        try:
+            employer = request.user.employer_profile
+        except Exception:
+            return Response(
+                {"detail": "Employer profile not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        now = timezone.now()
+
+        subscription = (
+            EmployerSubscription.objects
+            .select_related("plan")
+            .filter(employer=employer)
+            .first()
+        )
+
+        if not subscription:
+            return Response({
+                "subscription": None,
+                "is_active": False
+            })
+
+        if subscription.is_active and subscription.end_date < now:
+            subscription.is_active = False
+            subscription.save(update_fields=["is_active"])
+
+        serializer = EmployerSubscriptionSerializer(subscription)
+
+        return Response({
+            "subscription": serializer.data,
+            "is_active": subscription.is_active
+        })
+

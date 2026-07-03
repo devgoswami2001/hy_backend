@@ -637,6 +637,94 @@ class JobApplication(BaseModel):
             ),
         ]
 
+import uuid
+
+class JobApplicationChat(BaseModel):
+    """
+    Chat thread between employer and jobseeker for a specific job application
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    job_application = models.OneToOneField(
+        "JobApplication",
+        on_delete=models.CASCADE,
+        related_name="chat_thread"
+    )
+
+    jobseeker = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="jobseeker_chats",
+        limit_choices_to={"role": "jobseeker"}
+    )
+
+    employer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="employer_chats",
+        limit_choices_to={"role": "employer"}
+    )
+
+    last_message_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-last_message_at"]
+
+    def __str__(self):
+        return f"Chat - {self.job_application}"
+
+
+class JobApplicationMessage(BaseModel):
+    """
+    Individual chat message inside a job application chat
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    MESSAGE_TYPE = [
+        ("text", "Text"),
+        ("file", "File"),
+    ]
+
+    chat = models.ForeignKey(
+        JobApplicationChat,
+        on_delete=models.CASCADE,
+        related_name="messages"
+    )
+
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="sent_job_messages"
+    )
+
+    message = models.TextField(blank=True, null=True)
+
+    attachment = models.FileField(
+        upload_to="job_chat_files/",
+        blank=True,
+        null=True
+    )
+
+    message_type = models.CharField(
+        max_length=10,
+        choices=MESSAGE_TYPE,
+        default="text"
+    )
+
+    is_read = models.BooleanField(default=False)
+
+    sent_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["sent_at"]
+
+    def __str__(self):
+        return f"{self.sender.email} - {self.chat.id}"
+
+
+
 
 class ActivityLog(models.Model):
     """
@@ -965,3 +1053,167 @@ class ApplicationRemark(BaseModel):
             models.Index(fields=['application', 'created_at']),
             models.Index(fields=['reviewer']),
         ]
+
+
+
+
+class EmployerSubscriptionPlan(BaseModel):
+    """
+    Master subscription plans
+    """
+
+    PLAN_TYPE = (
+        ("monthly", "Monthly"),
+        ("quarterly", "Quarterly"),
+        ("yearly", "Yearly"),
+    )
+
+    name = models.CharField(max_length=120)
+
+    plan_type = models.CharField(
+        max_length=20,
+        choices=PLAN_TYPE
+    )
+
+    price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2
+    )
+
+    duration_days = models.PositiveIntegerField()
+
+    one_time_setup_fee = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=36000
+    )
+
+    free_hr_logins = models.PositiveIntegerField(
+        default=5
+    )
+
+    extra_hr_login_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=3500
+    )
+
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.price})"
+
+
+
+import uuid
+class EmployerPayUPayment(models.Model):
+
+    class Meta:
+        db_table = "employer_payu_payments"
+        verbose_name = "Employer PayU Payment"
+        verbose_name_plural = "Employer PayU Payments"
+
+    class Status(models.TextChoices):
+        INITIATED = "initiated", "Initiated"
+        SUCCESS = "success", "Success"
+        FAILED = "failed", "Failed"
+
+    PAYMENT_TYPE = (
+        ("subscription", "Subscription"),
+        ("hr_seat", "HR Seat"),
+    )
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False
+    )
+
+    employer = models.ForeignKey(
+        "EmployerProfile",
+        on_delete=models.CASCADE,
+        related_name="payments"
+    )
+
+    plan = models.ForeignKey(
+        "EmployerSubscriptionPlan",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    payment_type = models.CharField(
+        max_length=20,
+        choices=PAYMENT_TYPE,
+        default="subscription"
+    )
+
+    seats = models.PositiveIntegerField(default=0)
+
+    txnid = models.CharField(
+        max_length=100,
+        unique=True
+    )
+
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.INITIATED
+    )
+
+    payu_payment_id = models.CharField(
+        max_length=100,
+        blank=True
+    )
+
+    bank_ref_num = models.CharField(
+        max_length=100,
+        blank=True
+    )
+
+    raw_response = models.JSONField(
+        default=dict,
+        blank=True
+    )
+    error_message = models.TextField(blank=True, default="")
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    def __str__(self):
+        return f"{self.txnid} - {self.status}"
+
+
+
+class EmployerSubscription(BaseModel):
+
+    employer = models.OneToOneField(
+        EmployerProfile,
+        on_delete=models.CASCADE,
+        related_name="subscription"
+    )
+
+    plan = models.ForeignKey(
+        EmployerSubscriptionPlan,
+        on_delete=models.PROTECT
+    )
+
+    start_date = models.DateTimeField()
+    end_date = models.DateTimeField()
+
+    is_active = models.BooleanField(default=True)
+
+    purchased_hr_seats = models.PositiveIntegerField(default=0)
+
+    def total_allowed_hr(self):
+        return self.plan.free_hr_logins + self.purchased_hr_seats
+
+
+
+

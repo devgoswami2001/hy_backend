@@ -8,6 +8,7 @@ from django.core.exceptions import ValidationError
 from employer.models import JobPost, JobApplication
 from django.utils import timezone
 from datetime import timedelta
+
 User = get_user_model()
 
 class JobSeekerProfile(models.Model):
@@ -622,7 +623,81 @@ class JobSeekerSubscription(models.Model):
             self.save(update_fields=['monthly_interviews_used', 'monthly_reset_date'])
 
 
+class PayUPayment(models.Model):
+    """Tracks PayU payment transactions"""
 
+    class Status(models.TextChoices):
+        INITIATED = 'initiated', 'Initiated'
+        SUCCESS = 'success', 'Success'
+        FAILED = 'failed', 'Failed'
+        CANCELLED = 'cancelled', 'Cancelled'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    # Relations
+    job_seeker = models.ForeignKey(
+        'JobSeekerProfile',
+        on_delete=models.CASCADE,
+        related_name='payments'
+    )
+    plan = models.ForeignKey(
+        'SubscriptionPlan',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    # PayU fields
+    txnid = models.CharField(max_length=100, unique=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.INITIATED
+    )
+
+    # PayU response data
+    payu_payment_id = models.CharField(max_length=100, blank=True)
+    bank_ref_num = models.CharField(max_length=100, blank=True)
+    error_message = models.TextField(blank=True)
+
+    # Metadata
+    raw_response = models.JSONField(default=dict, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'payu_payments'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.txnid} - {self.status}"
+
+
+class SubscriptionActivation(models.Model):
+    """Tracks subscription activation from payment"""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    payment = models.OneToOneField(
+        PayUPayment,
+        on_delete=models.CASCADE,
+        related_name='activation'
+    )
+    subscription = models.OneToOneField(
+        'JobSeekerSubscription',
+        on_delete=models.CASCADE,
+        related_name='activation'
+    )
+
+    activated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = 'subscription_activations'
+
+    def __str__(self):
+        return f"Activated {self.subscription.plan.name}"
 
 class RazorpayPayment(models.Model):
     """Simple payment tracking"""

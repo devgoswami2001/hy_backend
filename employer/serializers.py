@@ -1799,3 +1799,128 @@ class ApplicationProfileViewSerializer(serializers.Serializer):
     profile = JobSeekerProfileSerializers()
     application = SimpleApplicationSerializers()
     remarks = ApplicationRemarkSerializers(many=True)
+
+
+
+
+
+
+
+class JobApplicationMessageSerializer(serializers.ModelSerializer):
+
+    sender_id = serializers.UUIDField(source="sender.id", read_only=True)
+    sender_name = serializers.SerializerMethodField()
+    sender_role = serializers.CharField(source="sender.role", read_only=True)
+
+    class Meta:
+        model = JobApplicationMessage
+        fields = [
+            "id",
+            "sender_id",
+            "sender_name",
+            "sender_role",
+            "message",
+            "attachment",
+            "message_type",
+            "is_read",
+            "sent_at",
+        ]
+
+    def get_sender_name(self, obj):
+        if hasattr(obj.sender, "get_full_name"):
+            return obj.sender.get_full_name()
+        return obj.sender.email
+
+
+class SendMessageSerializer(serializers.Serializer):
+
+    job_application_id = serializers.IntegerField()
+    message = serializers.CharField(required=False, allow_blank=True)
+    attachment = serializers.FileField(required=False)
+
+    def validate(self, attrs):
+
+        user = self.context["request"].user
+        job_application_id = attrs.get("job_application_id")
+
+        try:
+            job_application = JobApplication.objects.select_related(
+                "job_post", "applicant"
+            ).get(id=job_application_id)
+
+        except JobApplication.DoesNotExist:
+            raise serializers.ValidationError(
+                {"job_application_id": "Job application not found."}
+            )
+
+        attrs["job_application"] = job_application
+
+        # 🚨 Validate roles
+
+        # Jobseeker validation
+        if user.role == "jobseeker":
+            if job_application.applicant_id != user.id:
+                raise serializers.ValidationError(
+                    "You are not the applicant for this job."
+                )
+
+        # Employer validation
+        elif user.role == "employer":
+            if job_application.job_post.created_by_id != user.id:
+                raise serializers.ValidationError(
+                    "You are not the employer of this job."
+                )
+
+        return attrs
+
+
+
+class EmployerSubscriptionPlanSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = EmployerSubscriptionPlan
+
+        fields = [
+            "id",
+            "name",
+            "plan_type",
+            "price",
+            "duration_days",
+            "free_hr_logins",
+            "extra_hr_login_price",
+            "is_active",
+            "created_at",
+        ]
+
+        read_only_fields = ["id", "created_at"]
+
+
+class EmployerSubscriptionSerializer(serializers.ModelSerializer):
+
+    plan_name = serializers.CharField(source="plan.name", read_only=True)
+
+    total_allowed_hr = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EmployerSubscription
+
+        fields = [
+            "id",
+            "plan",
+            "plan_name",
+            "start_date",
+            "end_date",
+            "is_active",
+            "purchased_hr_seats",
+            "total_allowed_hr",
+        ]
+
+    def get_total_allowed_hr(self, obj):
+        return obj.plan.free_hr_logins + obj.purchased_hr_seats
+
+
+
+
+
+
+

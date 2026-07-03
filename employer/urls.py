@@ -86,19 +86,44 @@ urlpatterns = [
 
     path("jobs/<int:job_id>/applicants/", JobApplicantsListView.as_view(), name="job-applicants"),
     path("applications/<int:application_id>/status/", JobApplicationStatusUpdateView.as_view(),name="job-application-status-update" ),
-     path("applications/<int:pk>/profile/", ApplicationProfileView.as_view(), name="application-profile"),
+    path("applications/<int:pk>/profile/", ApplicationProfileView.as_view(), name="application-profile"),
+    path(
+        "job-chat/send-message/",
+        SendJobApplicationMessageView.as_view(),
+        name="send-job-application-message"
+    ),
+
+    path(
+        "job-chat/messages/<int:job_application_id>/",
+        JobApplicationChatMessagesView.as_view(),
+        name="job-chat-messages"
+    ),
+    path(
+        "subscription-plans/",
+        EmployerSubscriptionPlanListView.as_view(),
+        name="employer-subscription-plans"
+    ),
+    path(
+        "start-payment/",
+        start_employer_payu_payment,
+        name="employer-start-payment"
+    ),
+    path(
+        "payu/webhook/",
+        employer_payu_webhook,
+        name="employer-payu-webhook"
+    ),
+
+    path(
+        "active-subscription/",
+        EmployerActiveSubscriptionView.as_view(),
+        name="employer-active-subscription"
+    ),
+    path(
+        "request-hr-seats/",
+        request_hr_seats,
+        name="request-hr-seats"
+    ),
 
 ]
-    # # # Job management
-    # path('jobs/my-jobs/', JobPostViewSet.as_view({'get': 'my_jobs'}), name='my-jobs'),
-    # path('jobs/<int:pk>/applicants/', JobPostViewSet.as_view({'get': 'applicants'}), name='job-applicants'),
-    # path('jobs/<int:pk>/update-status/', JobPostViewSet.as_view({'post': 'update_status'}), name='update-status'),
-    
-#     # Social features
-#     path('posts/<int:pk>/comments/', CompanyPostViewSet.as_view({'get': 'comments'}), name='post-comments'),
-#     path('posts/<int:pk>/like/', CompanyPostViewSet.as_view({'post': 'like', 'delete': 'like'}), name='post-like'),
-    
-#     # Analytics
-#     path('analytics/stats/<int:pk>/', EmployerProfileViewSet.as_view({'get': 'stats'}), name='company-stats'),
-#     path('analytics/activities/', ActivityLogViewSet.as_view({'get': 'company_activities'}), name='company-activities'),
 

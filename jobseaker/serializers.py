@@ -766,7 +766,24 @@ class MockInterviewListSerializer(serializers.ModelSerializer):
 
 
 
+class JobSeekerSubscriptionSerializer(serializers.ModelSerializer):
+    plan_name = serializers.CharField(source="plan.name", read_only=True)
+    daily_swipe_limit = serializers.IntegerField(source="plan.daily_swipe_limit", read_only=True)
+    mock_interviews_monthly = serializers.IntegerField(source="plan.mock_interviews_monthly", read_only=True)
 
+    class Meta:
+        model = JobSeekerSubscription
+        fields = [
+            "id",
+            "status",
+            "start_date",
+            "end_date",
+            "daily_swipes_used",
+            "monthly_interviews_used",
+            "plan_name",
+            "daily_swipe_limit",
+            "mock_interviews_monthly",
+        ]
 
 
 

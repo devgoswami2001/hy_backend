@@ -60,17 +60,24 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'hyresense.urls'
+CORS_ALLOW_ALL_ORIGINS = True
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:9002",
+#     "http://192.168.1.3:9003",
+#     "https://www.recruiter.hyresense.com",
+#     "https://recruiter.hyresense.com",
+#     "https://www.hyresense.com",
+#     "https://hyresense.com",
+# ]
+# CSRF_TRUSTED_ORIGINS = [
+#     "https://www.recruiter.hyresense.com",
+#     "https://recruiter.hyresense.com",
+#     "https://www.hyresense.com",
+#     "https://hyresense.com",
+# ]
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:9002",
-    "http://192.168.1.3:9003",
-    "http://192.168.1.3:9002",
-    "http://172.16.15.43:9002",
-    "http://172.16.15.70:9003",
-    "http://172.16.15.70:9002",
-    
-]
 CORS_ALLOW_CREDENTIALS = True
+GOOGLE_CLIENT_ID = "885230424227-m6qctts62fvq43ks5i111n6s8ljjif9b.apps.googleusercontent.com"
 
 TEMPLATES = [
     {
@@ -200,7 +207,38 @@ EMAIL_HOST = 'smtpout.secureserver.net'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 
+EMAIL_HOST_USER = 'connect@hyresense.com'
+EMAIL_HOST_PASSWORD = 'Abhi@2256'
+
+DEFAULT_FROM_EMAIL = 'HyreSense <connect@hyresense.com>'
+
+
 
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+
+
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'static'
+
+
+PAYU_MERCHANT_KEY = "ZgkAKg"
+PAYU_SALT = "gze6q6fLb3QwaIePBTTyIXRLtkjHTLEU"
+
+# PAYU_MERCHANT_KEY = "poYVYx"
+# PAYU_SALT = "jTg2IsD07SJ5iEEd2RwV1q7LWxQktwZv"
+
+
+PAYU_TEST_URL = "https://test.payu.in/_payment"
+PAYU_LIVE_URL = "https://secure.payu.in/_payment"
+# settings.py
+PAYU_SUCCESS_URL = "https://hyresense.com/payment/success"
+PAYU_FAILURE_URL = "https://hyresense.com/payment/failure"
+PAYU_SUCCESS_URL_R = "https://recruiter.hyresense.com/dashboard/subscription/success"
+PAYU_FAILURE_URL_R = "https://recruiter.hyresense.com/dashboard/subscription/failure"

@@ -12,10 +12,10 @@ from jobseaker.services.ai_matcher import JobAIAnalyzer
 from rest_framework.throttling import UserRateThrottle
 from django.core.exceptions import ValidationError
 from employer.models import JobPost, JobApplication
-from .models import JobSeekerProfile, Resume, User, AIRemarks
+from .models import *
 from .serializers import *
 from .permissions import IsJobseekerPermission
-
+from django.http import HttpResponse
 from .raz import *
 import logging
 from django.http import JsonResponse
@@ -26,6 +26,19 @@ from datetime import timedelta
 from rest_framework.viewsets import ReadOnlyModelViewSet
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.exceptions import PermissionDenied
+import uuid
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from django.conf import settings
+from .utilss import generate_payu_hash
+from .pservices import activate_subscription
+
+
+
+
+
+
 logger = logging.getLogger(__name__)
 
 @api_view(['GET'])
@@ -207,11 +220,6 @@ def jobs_by_skills(request):
 
         # Filter active jobs excluding applied ones
         for job in JobPost.active_jobs.exclude(id__in=applied_job_ids):
-            job_skills = job.required_skills or []
-            job_skills_lower = [s.lower() for s in job_skills]
-
-            # Check skill overlap
-            if any(skill in job_skills_lower for skill in user_skills_lower):
                 company_profile_image = None
                 if hasattr(job.company, "logo") and job.company.logo:
                     company_profile_image = request.build_absolute_uri(
@@ -1054,5 +1062,314 @@ class JobSeekerMockInterviewListView(generics.ListAPIView):
 
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def start_payu_payment(request):
+    plan_id = (
+        request.data.get("plan_id")
+        or request.data.get("subscription_id")
+    )
 
+    if not plan_id:
+        return Response(
+            {"error": "plan_id is required"},
+            status=400
+        )
+
+    job_seeker = request.user.jobseeker_profile
+
+    try:
+        plan = SubscriptionPlan.objects.get(id=plan_id)
+    except SubscriptionPlan.DoesNotExist:
+        return Response(
+            {"error": "Invalid subscription plan"},
+            status=404
+        )
+
+    payment = PayUPayment.objects.create(
+        job_seeker=job_seeker,
+        plan=plan,
+        txnid=str(uuid.uuid4()),
+        amount=plan.price
+    )
+
+    payu_data = {
+        "key": settings.PAYU_MERCHANT_KEY,
+        "txnid": payment.txnid,
+        "amount": str(payment.amount),
+        "productinfo": plan.name,
+        "firstname": job_seeker.first_name,
+        "email": request.user.email,
+        "phone": job_seeker.phone_number,
+        "surl": settings.PAYU_SUCCESS_URL,
+        "furl": settings.PAYU_FAILURE_URL,
+        "service_provider": "payu_paisa",
+    }
+
+    payu_data["hash"] = generate_payu_hash(payu_data)
+
+    return Response({
+        "payu_url": settings.PAYU_LIVE_URL,
+        "payu_data": payu_data
+    })
+
+
+
+# import json
+# from django.http import HttpResponse
+# from django.views.decorators.csrf import csrf_exempt
+# from .models import PayUPayment
+
+
+# @csrf_exempt
+# def payu_webhook(request):
+
+#     print("🔥 PAYU WEBHOOK HIT")
+
+#     if request.method != "POST":
+#         return HttpResponse("Invalid request", status=405)
+
+#     try:
+
+#         raw_body = request.body
+#         print("RAW BODY:", raw_body)
+
+#         payload = {}
+
+#         try:
+#             data = json.loads(raw_body)
+#             payload = data
+#             print("✅ JSON PAYLOAD:", payload)
+
+#         except Exception:
+#             print("⚠️ Not JSON, using form data")
+#             payload = request.POST.dict()
+#             print("FORM PAYLOAD:", payload)
+
+#         # 🔥 FIX
+#         txnid = payload.get("merchantTransactionId")
+
+#         print("TXNID:", txnid)
+
+#         if not txnid:
+#             return HttpResponse("Missing txnid", status=400)
+
+#         payment = PayUPayment.objects.filter(txnid=txnid).first()
+
+#         if not payment:
+#             return HttpResponse("Payment not found", status=404)
+
+#         payment.payu_payment_id = payload.get("paymentId")
+#         payment.bank_ref_num = payload.get("bankRefNum")
+#         payment.raw_response = payload
+
+#         status = payload.get("status", "").lower()
+
+#         if status == "success":
+#             payment.status = PayUPayment.Status.SUCCESS
+#         elif status == "failure":
+#             payment.status = PayUPayment.Status.FAILED
+
+#         payment.save()
+
+#         print("✅ PAYMENT UPDATED")
+
+#         return HttpResponse("OK")
+
+#     except Exception as e:
+#         print("🔥 WEBHOOK ERROR:", str(e))
+#         return HttpResponse("Server error", status=500)
+
+
+
+import json
+from datetime import timedelta
+
+from django.http import HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.utils import timezone
+
+from .models import PayUPayment, JobSeekerSubscription
+
+
+@csrf_exempt
+def payu_webhook(request):
+
+    print("🔥 PAYU WEBHOOK HIT")
+
+    if request.method != "POST":
+        return HttpResponse("Invalid request", status=405)
+
+    try:
+
+        raw_body = request.body
+        print("RAW BODY:", raw_body)
+
+        payload = {}
+
+        # Try JSON payload
+        try:
+            data = json.loads(raw_body)
+            payload = data
+            print("✅ JSON PAYLOAD:", payload)
+
+        except Exception:
+            print("⚠️ Not JSON, using form data")
+            payload = request.POST.dict()
+            print("FORM PAYLOAD:", payload)
+
+        # PayU sends merchantTransactionId instead of txnid
+        txnid = payload.get("merchantTransactionId")
+
+        print("TXNID:", txnid)
+
+        if not txnid:
+            return HttpResponse("Missing txnid", status=400)
+
+        payment = PayUPayment.objects.filter(txnid=txnid).first()
+
+        if not payment:
+            return HttpResponse("Payment not found", status=404)
+
+        # Update payment info
+        payment.payu_payment_id = payload.get("paymentId")
+        payment.bank_ref_num = payload.get("bankRefNum")
+        payment.error_message = payload.get("error_Message", "")
+        payment.raw_response = payload
+
+        status = payload.get("status", "").lower()
+
+        if status == "success":
+
+            payment.status = PayUPayment.Status.SUCCESS
+            payment.save()
+
+            print("✅ PAYMENT SUCCESS")
+
+            job_seeker = payment.job_seeker
+            plan = payment.plan
+            now = timezone.now()
+
+            # Expire existing active subscription
+            existing_sub = JobSeekerSubscription.objects.filter(
+                job_seeker=job_seeker,
+                status=JobSeekerSubscription.Status.ACTIVE
+            ).first()
+
+            if existing_sub:
+                existing_sub.status = JobSeekerSubscription.Status.EXPIRED
+                existing_sub.end_date = now
+                existing_sub.save()
+
+                print("⚠️ Existing subscription expired")
+
+            # Create new subscription
+            end_date = now + timedelta(days=plan.duration_days)
+
+            new_sub = JobSeekerSubscription.objects.create(
+                job_seeker=job_seeker,
+                plan=plan,
+                status=JobSeekerSubscription.Status.ACTIVE,
+                start_date=now,
+                end_date=end_date
+            )
+
+            print("🎉 NEW SUBSCRIPTION CREATED:", new_sub)
+
+        elif status == "failure":
+
+            payment.status = PayUPayment.Status.FAILED
+            payment.save()
+
+            print("❌ PAYMENT FAILED")
+
+        else:
+            payment.save()
+
+        return HttpResponse("OK", status=200)
+
+    except Exception as e:
+
+        print("🔥 WEBHOOK ERROR:", str(e))
+
+        # Always return 200 so PayU stops retrying
+        return HttpResponse("OK", status=200)
+
+
+class ActiveSubscriptionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+
+        try:
+            job_seeker = request.user.jobseeker_profile
+        except Exception:
+            return Response(
+                {"detail": "Job seeker profile not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        now = timezone.now()
+
+        subscription = (
+            JobSeekerSubscription.objects
+            .select_related("plan")
+            .filter(job_seeker=job_seeker)
+            .first()
+        )
+
+        # -------------------------
+        # CASE 1: No subscription
+        # -------------------------
+        if not subscription:
+
+            free_plan = SubscriptionPlan.objects.filter(
+                plan_type=SubscriptionPlan.PlanType.FREEMIUM,
+                is_active=True
+            ).first()
+
+            if not free_plan:
+                return Response(
+                    {"detail": "Freemium plan not configured"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+            subscription = JobSeekerSubscription.objects.create(
+                job_seeker=job_seeker,
+                plan=free_plan,
+                status=JobSeekerSubscription.Status.ACTIVE,
+                start_date=now,
+                end_date=now + timedelta(days=3650)  # 10 years free plan
+            )
+
+        # -------------------------
+        # CASE 2: Expired plan
+        # -------------------------
+        elif (
+            subscription.status == JobSeekerSubscription.Status.ACTIVE
+            and subscription.end_date < now
+        ):
+
+            subscription.status = JobSeekerSubscription.Status.EXPIRED
+            subscription.save(update_fields=["status"])
+
+            free_plan = SubscriptionPlan.objects.filter(
+                plan_type=SubscriptionPlan.PlanType.FREEMIUM,
+                is_active=True
+            ).first()
+
+            subscription = JobSeekerSubscription.objects.create(
+                job_seeker=job_seeker,
+                plan=free_plan,
+                status=JobSeekerSubscription.Status.ACTIVE,
+                start_date=now,
+                end_date=now + timedelta(days=3650)
+            )
+
+        serializer = JobSeekerSubscriptionSerializer(subscription)
+
+        return Response({
+            "subscription": serializer.data,
+            "is_active": subscription.is_active
+        })
 

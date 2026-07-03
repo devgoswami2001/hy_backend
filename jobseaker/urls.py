@@ -48,6 +48,11 @@ urlpatterns = [
     path("payments/verify/", VerifyPaymentView.as_view(), name="verify-payment"),
     path("mock-interviews/request/", JobSeekerMockInterviewCreateView.as_view(), name="mock-interview-request"),
     path("mock-interviews/my/", JobSeekerMockInterviewListView.as_view(), name="mock-interview-list"),
-    
+    # Frontend (Next.js) calls this
+    path("payu/start/", views.start_payu_payment, name="payu-start"),
+
+    # PayU server calls this (webhook)
+    path("payu/webhook/", views.payu_webhook, name="payu-webhook"),
+    path("subscription/active/", ActiveSubscriptionView.as_view(), name="active-subscription"),
 
 ]

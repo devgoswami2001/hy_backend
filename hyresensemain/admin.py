@@ -1,28 +1,97 @@
+import csv
+
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.http import HttpResponse
 from .models import *
+
+
+@admin.action(description="Export selected users to CSV")
+def export_users_csv(modeladmin, request, queryset):
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename=users.csv'
+
+    writer = csv.writer(response)
+
+    writer.writerow([
+        'id',
+        'email',
+        'username',
+        'role',
+        'password_hash',
+        'is_active',
+        'is_staff',
+        'created_at',
+    ])
+
+    for user in queryset:
+        writer.writerow([
+            user.id,
+            user.email,
+            user.username,
+            user.role,
+            user.password,
+            user.is_active,
+            user.is_staff,
+            user.created_at,
+        ])
+
+    return response
 
 class CustomUserAdmin(BaseUserAdmin):
     model = User
-    list_display = ('email', 'role', 'is_active', 'is_staff', 'created_at')
+
+    list_display = (
+        'email',
+        'role',
+        'is_active',
+        'is_staff',
+        'created_at'
+    )
+
+    actions = [export_users_csv]   # ← add this line
+
     list_filter = ('role', 'is_active', 'is_staff')
     search_fields = ('email', 'username')
     ordering = ('email',)
-    readonly_fields = ('created_at',)  # <<< Add this
+    readonly_fields = ('created_at',)
 
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
         ('Personal info', {'fields': ('first_name', 'last_name')}),
         ('Important dates', {'fields': ('last_login', 'created_at')}),
-        ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
+        ('Permissions', {
+            'fields': (
+                'is_active',
+                'is_staff',
+                'is_superuser',
+                'groups',
+                'user_permissions'
+            )
+        }),
     )
+# class CustomUserAdmin(BaseUserAdmin):
+#     model = User
+#     list_display = ('email', 'role', 'is_active', 'is_staff', 'created_at')
+#     list_filter = ('role', 'is_active', 'is_staff')
+#     search_fields = ('email', 'username')
+#     ordering = ('email',)
+#     readonly_fields = ('created_at',)  # <<< Add this
 
-    add_fieldsets = (
-        (None, {
-            'classes': ('wide',),
-            'fields': ('email', 'username', 'password1', 'password2', 'role', 'is_active', 'is_staff')}
-        ),
-    )
+#     fieldsets = (
+#         (None, {'fields': ('email', 'password')}),
+#         ('Personal info', {'fields': ('first_name', 'last_name')}),
+#         ('Important dates', {'fields': ('last_login', 'created_at')}),
+#         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
+#     )
+
+#     add_fieldsets = (
+#         (None, {
+#             'classes': ('wide',),
+#             'fields': ('email', 'username', 'password1', 'password2', 'role', 'is_active', 'is_staff')}
+#         ),
+#     )
+
 admin.site.register(User, CustomUserAdmin)
 
 

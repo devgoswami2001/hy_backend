@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import *
-from .utils import send_otp_email
+from .utilss import send_otp_email
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 
